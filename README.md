@@ -4,7 +4,7 @@
 Use obstacle recognition to avoid collision is an important driving assistance technology. Existing methods use single sensor (LiDAR/camera). They have higher complexity and more detection flaws. We plan to build an autonomous RC car that uses distance sensors like LiDAR to avoid obstacles.It also uses OpenCV models to detect lanes so that the car can keep going in lane. This multi-model methods can ensure more accurate lane recognition and collisions avoiding, which is more practical.
 
 ## Architecture
-![Architecture](ReaddmeImg/1.png)
+![Architecture](ReadmeImg/1.png)
 
 ## Development environment
 1.  Python3
@@ -16,13 +16,17 @@ In terms of software, we currently use OpenCV to recognize lane lines in videos.
 ## Current running results
 
 __Original Graph:__
-![Architecture](ReaddmeImg/s1-1.png)
+
+![Architecture](ReadmeImg/s1-1.png)
 
 __Color Reserved:__
-![Architecture](ReaddmeImg/s1-2.png)
+
+![Architecture](ReadmeImg/s1-2.png)
 
 __Gray Graph:__
-![Architecture](ReaddmeImg/s2-1.png)
+
+![Architecture](ReadmeImg/s2-1.png)
 
 __Draw lanes:__
-![Architecture](ReaddmeImg/s5-2.png)
+
+![Architecture](ReadmeImg/s5-2.png)
