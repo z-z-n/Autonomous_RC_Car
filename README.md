@@ -17,16 +17,16 @@ In terms of software, we currently use OpenCV to recognize lane lines in videos.
 
 __Original Graph:__
 
-<img src="./ReadmeImg/s1.png" alt="Editor" width="500">
+<img src="./ReadmeImg/s1.png" alt="Original Graph" width="500">
 
 __Color Reserved:__
 
-![Architecture](ReadmeImg/s2.png)
+<img src="./ReadmeImg/s2.png" alt="Color Reserved Graph" width="500">
 
 __Gray Graph:__
 
-![Architecture](ReadmeImg/s3.png)
+<img src="./ReadmeImg/s3.png" alt="Gray Graph" width="500">
 
 __Draw lanes:__
 
-![Architecture](ReadmeImg/s4.png)
+<img src="./ReadmeImg/s4.png" alt="Draw lanes Graph" width="500">
