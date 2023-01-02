@@ -17,7 +17,7 @@ In terms of software, we currently use OpenCV to recognize lane lines in videos.
 
 __Original Graph:__
 
-![Architecture](ReadmeImg/s1.png)
+<img src="./ReadmeImg/s1.png" alt="Editor" width="500">
 
 __Color Reserved:__
 
