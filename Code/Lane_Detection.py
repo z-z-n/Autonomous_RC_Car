@@ -1,10 +1,17 @@
-# Author: ZZN
+# Author: Zhining Zhang
+# Task: Complete bend detection
+
 import cv2
 import numpy as np
+import time
+from collections import *
 
-capture = cv2.VideoCapture('Input_Video.mp4')
+'''
+1. Color filtering
+'''
 
 
+# reserve regions with yellow and write color
 def color_filter(image):
     # convert to HLS to mask based on HLS
     hls = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
@@ -16,19 +23,36 @@ def color_filter(image):
     whitemask = cv2.inRange(hls, lower, upper)
     mask = cv2.bitwise_or(yellowmask, whitemask)
     masked = cv2.bitwise_and(image, image, mask=mask)
+    # return regions with yellow and write color
     return masked
 
 
+'''
+2. Canny to get edges
+'''
+
+
+# canny to get edges of imgs
 def get_edge_img(color_img):
+    # get HLS img
     HLS = color_filter(color_img)
+    # turn to gray
     gray = cv2.cvtColor(HLS, cv2.COLOR_RGB2GRAY)
+    # resize to (800,450)
     img = cv2.resize(gray, (800, 450), interpolation=cv2.INTER_AREA)
+    # resize original img
     img0 = cv2.resize(color_img, (800, 450), interpolation=cv2.INTER_AREA)
     # Canny edge detection algorithm
     edge_img = cv2.Canny(img, 90, 200)
     return edge_img, img0
 
 
+'''
+3. reverse regions of interest (For images of size 800×450)
+'''
+
+
+# region of interest
 def roi_mask(edge_img):
     mask = np.zeros_like(edge_img)
     cv2.fillPoly(mask, np.array([[[180, 415], [300, 280], [450, 280], [720, 415]]]), color=255)
@@ -36,8 +60,9 @@ def roi_mask(edge_img):
     return masked_edge_img
 
 
-'''3.霍夫变换，找出直线'''
-'''3. Hough transform, find the straight line'''
+'''
+4.霍夫变换，找出直线 (Hough transform, find the straight line)
+'''
 
 
 def calculate_slope(line):
@@ -49,12 +74,13 @@ def calculate_slope(line):
     return (y_2 - y_1) / (x_2 - x_1)
 
 
-'''4.离群值过滤'''
-'''4. Outlier filtering'''
+'''
+5.离群值过滤(Outlier filtering) 
+'''
 
 
 def reject_abnormal_lines(lines, threshold):
-    '''剔出斜率不一致的线段'''
+    '''剔出斜率不一致的线段(Pick out the line segments with inconsistent slopes)'''
     slopes = [calculate_slope(line) for line in lines]
     while len(lines) > 0:
         mean = np.mean(slopes)
@@ -68,29 +94,35 @@ def reject_abnormal_lines(lines, threshold):
     return lines
 
 
-'''5.最小二乘拟合 把识别到的多条线段拟合成一条直线'''
-'''5. Least square fitting Fit the identified multiple line segments into a straight line'''
+'''
+6.最小二乘拟合 把识别到的多条线段拟合成一条直线
+(Least square fitting Fit the identified multiple line segments into a straight line)
+'''
 
 
-# np.ravel: 将高维数组拉成一维数组
-# np.polyfit:多项式拟合
-# np.polyval: 多项式求值
+# np.ravel: 将高维数组拉成一维数组(pull a high-dimensional array into a one-dimensional array)
+# np.polyfit:多项式拟合(polynomial fit)
+# np.polyval: 多项式求值(polynomial valuation)
 def least_squares_fit(lines):
+    # get x,y of two points
     x_coords = np.ravel([[line[0][0], line[0][2]] for line in lines])
-    y_coords = np.ravel([[line[0][1], line[0][3]] for line in lines])  # 取出所有标点
-    poly = np.polyfit(x_coords, y_coords, deg=1)  # 进行直线拟合，得到多项式系数
+    y_coords = np.ravel([[line[0][1], line[0][3]] for line in lines])
+    # 进行直线拟合，得到多项式系数（Perform a straight line fit to get the polynomial coefficients）
+    poly = np.polyfit(x_coords, y_coords, deg=1)
+    # 根据多项式系数，计算两个直线上的点 (Calculate the points on the two lines according to the polynomial coefficients)
     point_min = (np.min(x_coords), np.polyval(poly, np.min(x_coords)))
-    point_max = (np.max(x_coords), np.polyval(poly, np.max(x_coords)))  # 根据多项式系数，计算两个直线上的点
+    point_max = (np.max(x_coords), np.polyval(poly, np.max(x_coords)))
     return np.array([point_min, point_max], dtype=np.int64)
 
-
+# get one left line and one right line
 def get_lines(mask_gray_img):
-    lines = cv2.HoughLinesP(mask_gray_img, 1, np.pi / 180, 15, minLineLength=30, maxLineGap=200)  # 获取所有线段
-    # print('0', len(lines))
-    left_lines = [line for line in lines if calculate_slope(line) > 0]
-    right_lines = [line for line in lines if calculate_slope(line) < 0]
+    # 获取所有线段 get all lines
+    lines = cv2.HoughLinesP(mask_gray_img, 1, np.pi / 180, 15, minLineLength=30, maxLineGap=200)
+    # 斜率分类 classification by slopes
+    left_lines = [line for line in lines if calculate_slope(line) < 0]
+    right_lines = [line for line in lines if calculate_slope(line) > 0]
     # print('1',len(left_lines), len(right_lines))
-
+    # 删除离群线段 remove outlier lines by slopes
     reject_abnormal_lines(left_lines, threshold=0.3)
     reject_abnormal_lines(right_lines, threshold=0.3)
     # print('2',len(left_lines), len(right_lines))
@@ -99,31 +131,53 @@ def get_lines(mask_gray_img):
     return left_lines, right_lines
 
 
+# Calculate the x-coordinate of the point where the lane line intersects with y=420
+# 计算车道线与y=420相交点的x坐标
 def calculate_x(line):
     x_1, y_1, x_2, y_2 = line[0]
     return [int(-(y_2 - 420) * (x_2 - x_1) / (y_2 - y_1) + x_2), 420]
 
 
+'''
+7. 显示结果 (Display results)
+'''
+
+
 def draw_lines(color_img, line1, line2):
+    # 彩图color img，左线left line，右线right line
+    # 左低 left-line low point，右高 high point
     list1 = np.append(line1[0], line1[1])
+    # 右低 right-line low point，左高 high point
     list2 = np.append(line2[0], line2[1])
+    # 计算最低点 calculate the lowest point
     p1 = calculate_x([list1])
     p2 = calculate_x([list2])
-    cv2.fillPoly(color_img, np.array([[[line1[0][0], line1[0][1]], p1,
-                                       p2, [line2[1][0], line2[1][1]]]]), (100, 87, 249))
-    cv2.line(color_img, tuple(line1[0]), tuple(p1), color=(0, 255, 0), thickness=2)
-    cv2.line(color_img, tuple(p2), tuple(line2[1]), color=(255, 0, 0), thickness=2)
-    if line1[0][1] > line2[1][1] and abs(line2[1][1] - line1[0][1]) > 5:
+    cv2.fillPoly(color_img, np.array([[[line1[1][0], line1[1][1]], p1,
+                                       p2, [line2[0][0], line2[0][1]]]]), (100, 87, 249))
+    cv2.line(color_img, tuple(line1[1]), tuple(p1), color=(0, 255, 0), thickness=2)
+    cv2.line(color_img, tuple(p2), tuple(line2[0]), color=(255, 0, 0), thickness=2)
+
+    # 计算斜率 calculate slopes
+    l_s=calculate_slope([list1])
+    r_s = calculate_slope([list2])
+    l_d = abs(np.degrees(np.arctan(l_s)))
+    r_d = abs(np.degrees(np.arctan(r_s)))
+    cv2.putText(color_img, '{0:6.4f} , {1:6.4f}'.format(l_d,r_d), (0, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    l_h, r_h = frame_img.update(line1[1][1], line2[0][1])
+    # 高度判断是否转向 Judging whether to turn according to height
+    if l_h < r_h and abs(r_h - l_h) > 5:
         cv2.putText(color_img, 'turn right', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
-    elif line1[0][1] < line2[1][1] and abs(line2[1][1] - line1[0][1]) > 5:
+    elif l_h > r_h and abs(r_h - l_h) > 5:
         cv2.putText(color_img, 'turn left', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
     else:
         cv2.putText(color_img, 'go straight', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
 
 
+# Previous function integration
+# 之前函数整合实现车道线识别
 def show_lane(color_img):
     """
-    在 color_img 上画出车道线
+    在 color_img 上画出车道线  (draw the lane on the color_img)
     :param color_img：彩色图，channels=3
     :return:
     """
@@ -134,20 +188,42 @@ def show_lane(color_img):
     return img0, mask_gray_img
     # return mask_gray_img
 
+# to get the average data
+class Frame:
+    def __init__(self, average=5):
+        # fixed length queue- 15
+        self.lane_l = deque(maxlen=average * 3)     # left line
+        self.lane_r = deque(maxlen=average * 3)     # right line
 
+    def update(self, point1, point2):
+        self.lane_l.append(point1)
+        self.lane_r.append(point2)
+        return np.mean(self.lane_l), np.mean(self.lane_r)
+
+
+capture = cv2.VideoCapture('Input_Video.mp4')
 fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
-out_cat = cv2.VideoWriter("save.mp4", fourcc, 15, (800, 450))  # 保存位置/格式
+# 保存位置/格式 the name/format of saving video
+# color video
+out_cat = cv2.VideoWriter("save.mp4", fourcc, 15, (800, 450))
+# gray video
 out1 = cv2.VideoWriter("gray.mp4", fourcc, 15, (800, 450), 0)
+# initial an Frame instance to save data
+frame_img = Frame()
+
 while True:
     ret, frame = capture.read()
     c = cv2.waitKey(10)
     if c == 27 or not ret:
         break
+    time_start = time.time()
     frame1, frame2 = show_lane(frame)
-    out_cat.write(frame1)  # 保存视频
+    out_cat.write(frame1)  # 保存视频save video
     out1.write(frame2)
     # frame1 = show_lane(frame)
     cv2.imshow('frame', frame1)
     cv2.imshow('frame2', frame2)
+    time_now = time.time()
+    # print("耗时", time_now - time_start, "s")
 out_cat.release()
 out1.release()
