@@ -138,13 +138,48 @@ def calculate_x(line):
     return [int(-(y_2 - 420) * (x_2 - x_1) / (y_2 - y_1) + x_2), 420]
 
 
+'''8.其他信息处理'''
+# 透视变换
+def perspective_img(img):
+    # 图像
+    # 图片大小，opencv读取，[1]是宽度[0]是高度
+    img_size = (img.shape[1], img.shape[0])
+    dst_size = (800, 450)
+    # src：源图像中待测矩形的四点坐标
+    # dst：目标图像中矩形的四点坐标
+    dst0 = np.array([(0.2, 0), (0.8, 0), (0.2, 1), (0.8, 1)], dtype="float32")
+    src0 = np.array([(0.44, 0.65), (0.57, 0.65), (0.1, 1), (1, 1)], dtype="float32")
+    src = np.float32(img_size) * src0
+    dst = np.float32(dst_size) * dst0
+    R = cv2.getPerspectiveTransform(src, dst)
+    warped = cv2.warpPerspective(img, R, dst_size)
+    return warped
+
+def direction(grayl,grayr):
+    nonzerol = grayl.nonzero()
+    nonzeror = grayr.nonzero()
+    l_x = np.array(nonzerol[1])
+    r_x = np.array(nonzeror[1])
+    x_final = np.mean([l_x[0], r_x[0]])
+    x_init = np.mean([l_x[-1], r_x[-1]])
+    degree = (x_final - x_init) / x_init
+    avg_degree = frame_img.update(degree)
+    # print(degree)
+    if abs(avg_degree) <= 0.055: # straight
+        return 0,avg_degree
+    elif avg_degree < 0: # left
+        return -1,avg_degree
+    else: # right
+        return 1,avg_degree
+
 '''
 7. 显示结果 (Display results)
 '''
 
 
-def draw_lines(color_img, line1, line2):
+def draw_lines(gray_img, color_img, line1, line2):
     # 彩图color img，左线left line，右线right line
+    color = np.copy(color_img)
     # 左低 left-line low point，右高 high point
     list1 = np.append(line1[0], line1[1])
     # 右低 right-line low point，左高 high point
@@ -157,12 +192,33 @@ def draw_lines(color_img, line1, line2):
     cv2.line(color_img, tuple(line1[1]), tuple(p1), color=(0, 255, 0), thickness=2)
     cv2.line(color_img, tuple(p2), tuple(line2[0]), color=(255, 0, 0), thickness=2)
 
+    # 灰度图划线
+    img_l = np.zeros_like(gray_img)
+    img_r = np.zeros_like(gray_img)
+    cv2.line(img_l, tuple(line1[1]), tuple(p1), color=255, thickness=2)
+    cv2.line(img_r, tuple(p2), tuple(line2[0]), color=255, thickness=2)
+    warped_grayl = perspective_img(img_l)
+    warped_grayr = perspective_img(img_r)
+    warped_color = perspective_img(color)
+    state, mean_degree = direction(warped_grayl, warped_grayr)
+    # cv2.imshow('0', warped_grayl)
+    # cv2.imshow('1', warped_grayr)
+    cv2.imshow('2', warped_color)
+
     # 计算斜率 calculate slopes
     l_s=calculate_slope([list1])
     r_s = calculate_slope([list2])
     l_d = abs(np.degrees(np.arctan(l_s)))
     r_d = abs(np.degrees(np.arctan(r_s)))
     cv2.putText(color_img, '{0:6.4f} , {1:6.4f}'.format(l_d,r_d), (0, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    cv2.putText(color_img, '{0:6.4f}'.format(mean_degree), (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    if state==0:
+        cv2.putText(color_img, 'go straight', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
+    elif state==-1:
+        cv2.putText(color_img, 'turn left', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
+    else:
+        cv2.putText(color_img, 'turn right', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
+    '''
     l_h, r_h = frame_img.update(line1[1][1], line2[0][1])
     # 高度判断是否转向 Judging whether to turn according to height
     if l_h < r_h and abs(r_h - l_h) > 5:
@@ -171,7 +227,7 @@ def draw_lines(color_img, line1, line2):
         cv2.putText(color_img, 'turn left', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
     else:
         cv2.putText(color_img, 'go straight', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
-
+    '''
 
 # Previous function integration
 # 之前函数整合实现车道线识别
@@ -184,7 +240,7 @@ def show_lane(color_img):
     edge_img, img0 = get_edge_img(color_img)
     mask_gray_img = roi_mask(edge_img)
     llines, rlines = get_lines(mask_gray_img)
-    draw_lines(img0, llines, rlines)
+    draw_lines(mask_gray_img, img0, llines, rlines)
     return img0, mask_gray_img
     # return mask_gray_img
 
@@ -194,12 +250,18 @@ class Frame:
         # fixed length queue- 15
         self.lane_l = deque(maxlen=average * 3)     # left line
         self.lane_r = deque(maxlen=average * 3)     # right line
+        self.degree = deque(maxlen=average)         # Deviation
 
-    def update(self, point1, point2):
+    def update(self, degree):
+        self.degree.append(degree)
+        return np.mean(self.degree)
+    '''
+    def update(self, point1, point2, degree):
         self.lane_l.append(point1)
         self.lane_r.append(point2)
-        return np.mean(self.lane_l), np.mean(self.lane_r)
-
+        self.degree.append(degree)
+        return np.mean(self.lane_l), np.mean(self.lane_r), np.mean(self.degree)
+    '''
 
 capture = cv2.VideoCapture('Input_Video.mp4')
 fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
