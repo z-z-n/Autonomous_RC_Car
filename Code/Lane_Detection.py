@@ -64,16 +64,6 @@ def roi_mask(edge_img):
 4.霍夫变换，找出直线 (Hough transform, find the straight line)
 '''
 
-
-def calculate_slope(line):
-    '''计算线段line的斜率Calculate the slope of the line segment
-    ：param Line：np.array([[x_1,y_1,x_2,y_2]])
-    :return:
-    '''
-    x_1, y_1, x_2, y_2 = line[0]
-    return (y_2 - y_1) / (x_2 - x_1)
-
-
 '''
 5.离群值过滤(Outlier filtering) 
 '''
@@ -98,7 +88,13 @@ def reject_abnormal_lines(lines, threshold):
 6.最小二乘拟合 把识别到的多条线段拟合成一条直线
 (Least square fitting Fit the identified multiple line segments into a straight line)
 '''
-
+def calculate_slope(line):
+    '''计算线段line的斜率Calculate the slope of the line segment
+    ：param Line：np.array([[x_1,y_1,x_2,y_2]])
+    :return:
+    '''
+    x_1, y_1, x_2, y_2 = line[0]
+    return (y_2 - y_1) / (x_2 - x_1)
 
 # np.ravel: 将高维数组拉成一维数组(pull a high-dimensional array into a one-dimensional array)
 # np.polyfit:多项式拟合(polynomial fit)
@@ -175,7 +171,35 @@ def direction(grayl,grayr):
 '''
 7. 显示结果 (Display results)
 '''
+def add_icon(img,icon):
+    h, w = img.shape[:2]
+    img0 = np.zeros_like(img)
+    icon = cv2.resize(icon, (160, 80), interpolation=cv2.INTER_AREA)
+    cv2.imshow('test1',icon)
+    nonzero=icon.nonzero()
+    valid_y = np.array(nonzero[0] + h*0.65, dtype="int")
+    valid_x = np.array(nonzero[1] + w*0.4, dtype="int")
+    img0[valid_y, valid_x] = [255, 255, 255]
+    dst = cv2.addWeighted(img, 1, img0, 0.7, 0)
+    # cv2.imshow('test1',dst)
+    return dst
 
+# 图像合并
+def merge_img(img_add, img_per, img_filter):
+    # 合并后的车道识别图像，透视变换彩图，透视变换二值图
+    # 图像分为左侧(1200，750)车道区域与信息，右侧2部分小图（400，350），分别显示剩余2图
+    final_img = np.zeros((750, 1600, 3), dtype=np.uint8)
+    final_img.fill(255)
+    final_img[0:750, 0:1200, :] = cv2.resize(img_add, (1200, 750))
+
+    # 右侧图片
+    final_img[0:350, 1200:1600, :] = cv2.resize(img_per, (400, 350))
+    # 图片，内容，位置，字体，大小，颜色和粗细
+    cv2.putText(final_img, 'Perspective img', (1300, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
+    gray_image = cv2.cvtColor(img_filter, cv2.COLOR_GRAY2RGB)
+    final_img[400:750, 1200:1600, :] = cv2.resize(gray_image, (400, 350))
+    cv2.putText(final_img, 'Filter & ROI ', (1300, 420), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
+    return final_img
 
 def draw_lines(gray_img, color_img, line1, line2):
     # 彩图color img，左线left line，右线right line
@@ -203,7 +227,7 @@ def draw_lines(gray_img, color_img, line1, line2):
     state, mean_degree = direction(warped_grayl, warped_grayr)
     # cv2.imshow('0', warped_grayl)
     # cv2.imshow('1', warped_grayr)
-    cv2.imshow('2', warped_color)
+    # cv2.imshow('2', warped_color)
 
     # 计算斜率 calculate slopes
     l_s=calculate_slope([list1])
@@ -213,11 +237,14 @@ def draw_lines(gray_img, color_img, line1, line2):
     cv2.putText(color_img, '{0:6.4f} , {1:6.4f}'.format(l_d,r_d), (0, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
     cv2.putText(color_img, '{0:6.4f}'.format(mean_degree), (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
     if state==0:
-        cv2.putText(color_img, 'go straight', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
+        # cv2.putText(color_img, 'go straight', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
+        color_img = add_icon(color_img, icon0)
     elif state==-1:
-        cv2.putText(color_img, 'turn left', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
+        # cv2.putText(color_img, 'turn left', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
+        color_img = add_icon(color_img, icon1)
     else:
-        cv2.putText(color_img, 'turn right', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
+        # cv2.putText(color_img, 'turn right', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
+        color_img = add_icon(color_img, icon2)
     '''
     l_h, r_h = frame_img.update(line1[1][1], line2[0][1])
     # 高度判断是否转向 Judging whether to turn according to height
@@ -228,6 +255,8 @@ def draw_lines(gray_img, color_img, line1, line2):
     else:
         cv2.putText(color_img, 'go straight', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 5)
     '''
+    final=merge_img(color_img, warped_color, gray_img)
+    return final
 
 # Previous function integration
 # 之前函数整合实现车道线识别
@@ -240,8 +269,8 @@ def show_lane(color_img):
     edge_img, img0 = get_edge_img(color_img)
     mask_gray_img = roi_mask(edge_img)
     llines, rlines = get_lines(mask_gray_img)
-    draw_lines(mask_gray_img, img0, llines, rlines)
-    return img0, mask_gray_img
+    final = draw_lines(mask_gray_img, img0, llines, rlines)
+    return final
     # return mask_gray_img
 
 # to get the average data
@@ -267,11 +296,14 @@ capture = cv2.VideoCapture('Input_Video.mp4')
 fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
 # 保存位置/格式 the name/format of saving video
 # color video
-out_cat = cv2.VideoWriter("save.mp4", fourcc, 15, (800, 450))
+out_cat = cv2.VideoWriter("save.mp4", fourcc, 15, (1600, 750))
 # gray video
-out1 = cv2.VideoWriter("gray.mp4", fourcc, 15, (800, 450), 0)
+# out1 = cv2.VideoWriter("gray.mp4", fourcc, 15, (800, 450), 0)
 # initial an Frame instance to save data
 frame_img = Frame()
+icon0 = cv2.imread('arrow0.png')
+icon1 = cv2.imread('arrow1.png')
+icon2 = cv2.imread('arrow2.png')
 
 while True:
     ret, frame = capture.read()
@@ -279,13 +311,13 @@ while True:
     if c == 27 or not ret:
         break
     time_start = time.time()
-    frame1, frame2 = show_lane(frame)
+    frame1 = show_lane(frame)
     out_cat.write(frame1)  # 保存视频save video
-    out1.write(frame2)
+    # out1.write(frame2)
     # frame1 = show_lane(frame)
     cv2.imshow('frame', frame1)
-    cv2.imshow('frame2', frame2)
+    # cv2.imshow('frame2', frame2)
     time_now = time.time()
     # print("耗时", time_now - time_start, "s")
 out_cat.release()
-out1.release()
+# out1.release()
